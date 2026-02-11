@@ -52,6 +52,8 @@ Adafruit_AHTX0 aht;
 
 void setup() {
   Serial.begin(115200);
+  while(Serial.)
+  delay(1000); //TODO: Temp wait for logs
   Serial.println("AHT21 Test\n\n");
 
   //################
