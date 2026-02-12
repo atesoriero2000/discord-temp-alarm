@@ -40,11 +40,16 @@ Features:
 #define SSID "Hi (3)"
 #define KEY "12345671"
 
+#define DISCORD_BLUE    32767
+#define DISCORD_GREEN   65280
+#define DISCORD_YELLOW  16760576
+#define DISCORD_RED     16711680
+
 WiFiClientSecure client;
 HTTPClient https;
-WiFiUDP ntpUDP;
+// WiFiUDP ntpUDP;
 
-NTPClient timeClient(ntpUDP, "north-america.pool.ntp.org", 19*60*60, 6000);
+// NTPClient timeClient(ntpUDP, "north-america.pool.ntp.org", 19*60*60, 6000);
 // static time_t now;
 
 // Create sensor object
@@ -52,8 +57,7 @@ Adafruit_AHTX0 aht;
 
 void setup() {
   Serial.begin(115200);
-  while(Serial.)
-  delay(1000); //TODO: Temp wait for logs
+  while (!Serial); // Wait for serial port to connect
   Serial.println("AHT21 Test\n\n");
 
   //################
@@ -75,18 +79,18 @@ void setup() {
   //####################
   //## NTP Time Setup ##
   //####################
-  Serial.println("NTP Server: ");
-  timeClient.begin();
+  // Serial.println("NTP Server: ");
+  // timeClient.begin();
 
   // configTime("GMT0", "pool.ntp.org", "time.nist.gov");
   // for (time_t now = time (nullptr); now < 8 * 3600 * 2; now = time (nullptr)) delay (500);
   yield();
-  delay(500); //NOTE
+  // delay(500); //NOTE
   // Serial.println("NTP Server Synchronized: " + getFormattedTime((uint32_t)  time (nullptr), false));
 
   client.setInsecure();
   https.begin(client, WEBHOOK);
-  sendDiscord("Alarm Connected: " + timeClient.getFormattedTime(), 65280);
+  sendDiscordMsg("Alarm Connected: ", DISCORD_GREEN);
 
 
   // Initialize I2C (SDA = D2/GPIO4, SCL = D1/GPIO5)
@@ -99,17 +103,17 @@ void setup() {
 
 void loop() {
   // now = time(nullptr); // + (6*60 + 10)*60;
-  timeClient.update(); //TODO: update less frequently
+  // timeClient.update(); //TODO: update less frequently
 
   sensors_event_t humidity, temp;
   aht.getEvent(&humidity, &temp); // Populate objects with fresh data
   
   String msg = "\nTempurature: " + String(temp.temperature) + " °C  |  " + String(temp.temperature* 1.8 + 32) + " °F \nHumidity: " + String(humidity.relative_humidity) + " %";
-
+  
   Serial.println(msg);
-  sendDiscord(msg, 65280);
+  sendDiscordTempurature("Tempurature Log", DISCORD_BLUE, temp.temperature, humidity.relative_humidity);
 
-  delay(2000); // Read every 2 seconds
+  delay(60000); // Read every 60 seconds
 }
 
 void connectWIFI() {
@@ -120,7 +124,7 @@ void connectWIFI() {
 //   timeClient.update();
 //   client.setInsecure();
 //   https.begin(client, WEBHOOK);
-//   sendDiscord("Alarm Connected: " + timeClient.getFormattedTime());
+//   sendDiscordMsg("Alarm Connected: " + timeClient.getFormattedTime());
 // }
 
 
@@ -128,41 +132,50 @@ void connectWIFI() {
   //## Discord Webhook Function ##
   //##############################
 
-// Green:     65280
+// Blue:      32767 (Regular logs)
+// Green:     65280 (Get, setting change confirmation)
 // Yellow:    16760576
 // Red:       16711680
-void sendErrorDiscord(int errorCode, int color){
-  sendDiscord("**ERROR:  **" + (String) errorCode + "   " + https.errorToString(errorCode), color);
+void sendDiscordError(int errorCode, int color){
+  sendDiscordMsg("**ERROR:  **" + (String) errorCode + "   " + https.errorToString(errorCode), color);
 }
 
-void sendDiscord(String subContent, int color){
+void sendDiscordMsg(String subContent, int color){
   String content = "";
-  bool a = https.begin(client, WEBHOOK);
   https.addHeader("Content-Type", "application/json");
   //TODO: Check iss for titles
   int code = https.POST("{\"content\":\"" + content + "\",\"embeds\": [{\"color\": " + (String) color + ", \"fields\": [{\"name\": \"" + subContent + "\", \"value\": \"\"\}] }],\"tts\":false}");
-  Serial.println("Send Discord POST Code: " + (String) code + ", " + https.errorToString(code));
+  Serial.println("Send Discord Msg POST Code: " + (String) code + "   " + https.errorToString(code));
 }
 
+void sendDiscordTempurature(String title, int color, double temp, double humidity){
+  String fullTitle = "**" + title + "**\\u0000";
+  String tempStr = String(temp * 1.8 + 32) + " °F" + "    |    " + String(temp) + " °C";
+  String humidityStr = String(humidity) + " %";
 
+  https.addHeader("Content-Type", "application/json");
+  int code = https.POST("{\"content\":\"\",\"embeds\": [{\"title\": \"" + fullTitle + "\", \"color\": " + (String) color + ", \"fields\": [{\"name\": \"\",\"value\": \"" + tempStr + "\\n\\u0000\"}, {\"name\": \"Humidity\",\"value\": \"" + humidityStr + "\\u0000\"} ] }],\"tts\":false}");
+
+  Serial.println("Send Discord Tempurature POST Code: " + (String) code + "   " + https.errorToString(code));
+}
   //########################
   //## NTP Time Functions ##
   //########################
 
-String getFormattedTime(unsigned long rawTime) {
-  return getFormattedTime(rawTime, false);
-}
+// String getFormattedTime(unsigned long rawTime) {
+//   return getFormattedTime(rawTime, false);
+// }
 
-String getFormattedTime(unsigned long rawTime, bool isDur) {
-  unsigned long hours = rawTime / 3600;
-  if(!isDur) hours %= 24;
-  String hoursStr = hours < 10 ? "0" + String(hours) : String(hours);
+// String getFormattedTime(unsigned long rawTime, bool isDur) {
+//   unsigned long hours = rawTime / 3600;
+//   if(!isDur) hours %= 24;
+//   String hoursStr = hours < 10 ? "0" + String(hours) : String(hours);
 
-  unsigned long minutes = (rawTime % 3600) / 60;
-  String minuteStr = minutes < 10 ? "0" + String(minutes) : String(minutes);
+//   unsigned long minutes = (rawTime % 3600) / 60;
+//   String minuteStr = minutes < 10 ? "0" + String(minutes) : String(minutes);
 
-  unsigned long seconds = rawTime % 60;
-  String secondStr = seconds < 10 ? "0" + String(seconds) : String(seconds);
+//   unsigned long seconds = rawTime % 60;
+//   String secondStr = seconds < 10 ? "0" + String(seconds) : String(seconds);
 
-  return isDur ? (hoursStr + "h " + minuteStr + "m " + secondStr + "s") : (hoursStr + ":" + minuteStr + ":" + secondStr);
-}
+//   return isDur ? (hoursStr + "h " + minuteStr + "m " + secondStr + "s") : (hoursStr + ":" + minuteStr + ":" + secondStr);
+// }
