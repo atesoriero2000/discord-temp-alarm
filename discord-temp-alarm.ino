@@ -1,37 +1,43 @@
-#include <Wire.h>
-#include <Adafruit_AHTX0.h>
-#include <NTPClient.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
 #include <WiFiClientSecure.h>
-#include <WiFiUdp.h>
-/*
-Wifi
-Time
-Discord web hooks (send and receive)
-Aht21 or DS18B20
 
-No:
-  Screen
-  Battery? (Lipo + Charger + Regulator)
+#include <NTPClient.h>
+#include <WiFiUdp.h>
+
+#include <OneWire.h>
+#include <DallasTemperature.h>
+
+#include <Wire.h>
+#include <Adafruit_AHTX0.h>
+
+/* 
+TODO:
+  Discord WebSocket (Gateway API)
+  Add sensor label to msg (i.e.: "Basement 1", "Room 1", "Homebrew ambient")
+  Sliding window average?
+  Logs
+  Read errors
+  Connection errors
+  Setting change confirmation msg (green)
+
+Maybe:
+  Temp in discord msg title
+  Remove "Temperature Log" from msg title
 
 Commands:
-  Set Reporting Interval (Normal, Warning, and Error)
-  Set Target
-  Set Range (Warning, Error High, and Error Low) [Maybe break alarm bound into separate command]
   Get Temperature
-  Get Info (Current Setting Values and Valid Commands)
+
+  Future:
+    Set Reporting Interval (Normal, Warning, and Error)
+    Set Target
+    Set Range (Warning, Error High, and Error Low) [Maybe break alarm bound into separate command]
+    Get Info (Current Setting Values and Valid Commands)
 
   Maybes:
     Silence (Indef or for a Duration)
     Unsilence
-
-Features:
-  Sliding window average?
-  Timestamps on messages
-  Logs
-  Read errors
-  Setting change confirmation
+    Set Wifi
 */
 
 
@@ -45,14 +51,12 @@ Features:
 #define DISCORD_YELLOW  16760576
 #define DISCORD_RED     16711680
 
-#define TEMP_PRECISION .01 // °F
+#define SENSOR_TYPE "DS18B20"   //DS18B20 or AHT21
+#define TEMP_PRECISION .01      // °F
 
 int MSG_INTERVAL_ERROR  =    1 * 60; // 1 minute
 int MSG_INTERVAL_WARN   =    5 * 60; // 5 minutes
 int MSG_INTERVAL        =   15 * 60; // 15 minutes
-
-// double TEMP_TARGET      =   62; // °F
-// double TEMP_RANGE_WARN  =   5;  //+- 5 °F
 
 double TEMP_HIGH_WARN   = 82; 
 double TEMP_LOW_WARN    = 59; 
@@ -75,11 +79,16 @@ const char* tz = "EST5EDT,M3.2.0/2,M11.1.0/2";
 
 // Create sensor object
 Adafruit_AHTX0 aht;
+// GPIO where the DS18B20 is connected to
+const int oneWireBus = 12;     
+// Setup a oneWire instance to communicate with any OneWire devices
+OneWire oneWire(oneWireBus);
+// Pass our oneWire reference to Dallas Temperature sensor 
+DallasTemperature sensors(&oneWire);
 
 void setup() {
   Serial.begin(115200);
   // while (!Serial); // Wait for serial port to connect
-  Serial.println("AHT21 Test\n\n");
 
   //################
   //## WIFI Setup ##
@@ -112,14 +121,8 @@ void setup() {
   sendDiscordConnect("Alarm Connected:");
 
 
-  // Initialize I2C (SDA = D2/GPIO4, SCL = D1/GPIO5)
-  if (!aht.begin()) {
-    Serial.println("Could not find AHT21? Check wiring");
-    while (1) delay(10);
-  }
-  Serial.println("AHT21 found");
+  initializeSensor();
 }
-
 
 
 
@@ -130,7 +133,17 @@ void loop() {
   // timeClient.update(); //TODO: update less frequently
 
   sensors_event_t humidity, temp;
-  aht.getEvent(&humidity, &temp); // Populate objects with fresh data
+
+  //TODO move to helper function
+  if(SENSOR_TYPE == "AHT21"){
+    aht.getEvent(&humidity, &temp); // Populate objects with fresh data
+    
+  } else if (SENSOR_TYPE == "DS18B20"){  
+    sensors.requestTemperatures(); 
+    temp.temperature = sensors.getTempCByIndex(0);
+    // float temperatureF = sensors.getTempFByIndex(0);
+  }
+
   double tempF = temp.temperature * 1.8 + 32;
   String msg = "\nTemperature: " + String(temp.temperature) + " °C  |  " + String(tempF) + " °F \nHumidity: " + String(humidity.relative_humidity) + " %";
   Serial.println(msg);
@@ -164,6 +177,28 @@ void loop() {
 }
 
 
+
+
+void initializeSensor(){
+  if(SENSOR_TYPE == "AHT21"){
+      // Initialize I2C (SDA = D2/GPIO4, SCL = D1/GPIO5)
+    if (!aht.begin()) {
+      Serial.println("Could not find AHT21? Check wiring");
+      while (1) delay(10);
+    }
+    Serial.println("AHT21 found");
+
+  } else if (SENSOR_TYPE == "DS18B20"){
+    // Start the DS18B20 sensor
+    sensors.begin();
+
+  } else {
+    String errorMsg = "ERROR: Sensor type '" + String(SENSOR_TYPE) + "' not supported";
+    Serial.println(errorMsg);
+    sendDiscordMsg(errorMsg, DISCORD_RED);
+    while(true) delay(10);
+  }
+}
 
 
 
