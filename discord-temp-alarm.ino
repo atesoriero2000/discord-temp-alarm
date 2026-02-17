@@ -136,22 +136,28 @@ void loop() {
   Serial.println(msg);
 
   
-
+//TODO check zeroing functionality
   if(tempF > TEMP_HIGH_ERROR || tempF < TEMP_LOW_ERROR){
     if(now > lastTempError + MSG_INTERVAL_ERROR){
-      sendDiscordTemperature("[ERROR] Temperature out of range!", DISCORD_RED, temp.temperature, humidity.relative_humidity);
+      lastTempMsg = 0;
+      lastTempWarn = 0;
       lastTempError = now;
+      sendDiscordTemperature("[ERROR] Temperature out of range!", DISCORD_RED, temp.temperature, humidity.relative_humidity);
     }
 
   } else if(tempF > TEMP_HIGH_WARN || tempF < TEMP_LOW_WARN){
     if(now > lastTempWarn + MSG_INTERVAL_WARN){
-      sendDiscordTemperature("[WARNING] Temperature Log:", DISCORD_YELLOW, temp.temperature, humidity.relative_humidity);
+      lastTempMsg = 0;
       lastTempWarn = now;
+      lastTempError = 0;
+      sendDiscordTemperature("[WARNING] Temperature Log:", DISCORD_YELLOW, temp.temperature, humidity.relative_humidity);
     }
 
   } else if(now > lastTempMsg + MSG_INTERVAL) {
-    sendDiscordTemperature("Temperature Log:", DISCORD_BLUE, temp.temperature, humidity.relative_humidity);
     lastTempMsg = now;
+    lastTempWarn = 0;
+    lastTempError = 0;
+    sendDiscordTemperature("Temperature Log:", DISCORD_BLUE, temp.temperature, humidity.relative_humidity);
   }
 
   delay(1000); // Refresh every 1 second
